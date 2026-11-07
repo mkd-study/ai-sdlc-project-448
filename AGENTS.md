@@ -1,45 +1,64 @@
-# Repository Guidelines
+# Руководство по работе с репозиторием
 
-## Project Structure & Module Organization
+## Рабочий язык
 
-This browser-only access-policy simulator uses React, TypeScript, Mantine, and Vite.
+Ведите обсуждения, документацию, комментарии к коду, описания тестов, сообщения коммитов и описания запросов на слияние на русском языке. Сохраняйте принятые английские идентификаторы в коде, названия инструментов, пути и команды.
 
-- `src/domain/`: data types and pure access calculations.
-- `src/app/`: application state, `useSimulator`, permission operations, localStorage, JSON import/export, and seed data.
-- `src/components/`: React screens and controls.
-- `src/main.tsx`: entry point and Mantine styles; no dedicated asset directory exists.
-- Tests sit beside implementation files; `src/test-setup.ts` configures their environment.
-- `docs/`: architecture and security requirements.
-- `rules/`: ast-grep architecture rules; currently only a placeholder.
-- `.github/workflows/`: CI, Hexlet checks, and GitHub Pages deployment.
+## Структура проекта
 
-## Build, Test, and Development Commands
+Симулятор политик доступа работает в браузере и использует React, TypeScript, Mantine и Vite.
 
-Use Node.js 26 to match CI.
+- `src/domain/`: типы данных и чистые функции расчёта доступа.
+- `src/app/`: состояние приложения, `useSimulator`, операции с разрешениями, localStorage, импорт и экспорт JSON, учебные данные.
+- `src/components/`: экраны и элементы интерфейса React.
+- `src/main.tsx`: точка входа и подключение стилей Mantine. Отдельного каталога ресурсов нет.
+- Тесты расположены рядом с кодом; `src/test-setup.ts` настраивает их окружение.
+- `docs/`: архитектурные правила и требования безопасности.
+- `rules/`: правила архитектурных проверок ast-grep; пока содержит только заглушку.
+- `.github/workflows/`: автоматические проверки, тесты Хекслета и публикация на GitHub Pages.
 
-- `make setup`: install locked dependencies with `npm ci` and build.
-- `npm run dev`: start Vite at `http://localhost:8080`.
-- `npm run build`: type-check and generate `dist/`.
-- `npm run preview`: serve the built application on port 8080.
-- `npm test`: run all Vitest tests once.
-- `npm run lint`: check code with Oxlint and formatting with Oxfmt.
-- `npm run lint:fix`: apply formatting and automatic lint fixes.
-- `make lint-arch`: scan `src/` using ast-grep rules.
+## Команды разработки и проверки
 
-## Coding Style & Architecture
+Используйте Node.js 26, как в окружении автоматических проверок.
 
-Follow existing TypeScript style: two-space indentation, double quotes, semicolons, and explicit type imports. Use PascalCase for components and types, camelCase for functions and variables, and lowercase hyphenated module filenames where appropriate.
+- `make setup`: установка зависимостей через `npm ci` и сборка.
+- `npm run dev`: запуск Vite по адресу `http://localhost:8080`.
+- `npm run build`: проверка типов и сборка в `dist/`.
+- `npm run preview`: запуск собранного приложения на порту 8080.
+- `npm run typecheck`: отдельная проверка типов TypeScript без сборки.
+- `npm test`: однократный запуск всех тестов Vitest.
+- `npm run lint`: проверка кода через Oxlint и форматирования через Oxfmt.
+- `npm run lint:fix`: форматирование и автоматическое исправление замечаний линтера.
+- `make lint-arch`: проверка `src/` по правилам ast-grep.
 
-Before changing application code, read `docs/architecture.md`. Preserve `components → app → domain`: components import shared types and operations through `src/app/index.ts`. Keep access calculations centralized and pass calculation time explicitly.
+Полный набор проверок перед отправкой изменений:
 
-## Testing Guidelines
+```bash
+make build && make test && make lint && make lint-arch
+```
 
-Use Vitest with jsdom and React Testing Library. Name tests `*.test.ts` or `*.test.tsx`. Run a focused suite with `npm test -- src/domain/access.test.ts`. Cover changed behavior, including invalid imports and independent permission sources. No coverage percentage threshold is configured.
+Все команды должны завершиться успешно. Пока каталог `rules/` пуст, архитектурная проверка не контролирует границы модулей; сверяйте их с правилами вручную.
 
-## Commit & Pull Request Guidelines
+## Стиль кода и архитектура
 
-History uses short English subjects such as `Add starter files`; no Conventional Commits scheme is established. Write concise, action-oriented subjects. PRs should explain the behavior change, link relevant issues, report verification commands, and include screenshots for visible UI changes. Before submission, run build, tests, lint, and architecture checks. Preserve `.github/workflows/hexlet-check.yml` unchanged.
+Соблюдайте текущий стиль TypeScript: отступы в два пробела, двойные кавычки, точки с запятой и явные импорты типов. Используйте PascalCase для компонентов и типов, camelCase для функций и переменных, строчные имена с дефисами для модулей, где это соответствует существующим файлам.
 
-## Security Requirements
+Перед изменением приложения прочитайте [архитектурные правила](docs/architecture.md). Сохраняйте направление зависимостей `components → app → domain`: компоненты получают общие типы и операции через `src/app/index.ts`. Централизуйте расчёт доступа и передавайте момент расчёта явно.
 
-Before changing data handling or permissions, read `docs/security-requirements.md`. Keep configuration in the browser, validate imports completely before applying them, and preserve unrelated permissions and independent access sources.
+## Процесс разработки
+
+Реализацию ведёт скилл tdd, зови его при новой логике и при исправлении.
+
+## Тестирование
+
+Используйте Vitest, jsdom и React Testing Library. Называйте файлы `*.test.ts` или `*.test.tsx`. Пример запуска отдельного набора: `npm test -- src/domain/access.test.ts`. Проверяйте изменённое поведение, включая некорректный импорт и независимые источники доступа. Минимальный процент покрытия не установлен.
+
+## Коммиты и запросы на слияние
+
+В истории встречаются короткие английские заголовки; обязательной схемы Conventional Commits нет. Новые сообщения пишите по-русски, кратко называя действие: «Добавить проверку срока разрешения».
+
+В описании запроса на слияние объясните изменение поведения, укажите связанные задачи и выполненные проверки. Для видимых изменений интерфейса приложите скриншоты. Перед отправкой выполните сборку, тесты, проверку стиля и архитектуры. Файл `.github/workflows/hexlet-check.yml` оставляйте без изменений.
+
+## Требования безопасности
+
+Перед изменением приложения прочитайте [требования службы безопасности](docs/security-requirements.md). Храните конфигурацию в браузере, полностью проверяйте импорт перед применением и сохраняйте остальные разрешения и независимые источники доступа.
