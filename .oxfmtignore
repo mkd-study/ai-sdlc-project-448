@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.md
+*.yml
+*.yaml
+*.json
+*.jsonc
+*.css
+*.html
+*.toml
+*.svg
