@@ -26,6 +26,162 @@ const upload = async (text: string) => {
 };
 
 describe("редактирование разрешений", () => {
+  it("после перезагрузки сохраняет выданное разрешение и возвращает оба полных списка", async () => {
+    const first = renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(screen.getByLabelText("Группа сотрудников для проверки"), "support");
+    await events.selectOptions(
+      screen.getByLabelText("Группа сотрудников для выдачи"),
+      "accounting",
+    );
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "mail");
+    await events.click(screen.getByTestId("permission-add"));
+    first.unmount();
+    renderApp();
+    expect(screen.getByText("Анна Белова: Почта")).toBeInTheDocument();
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("");
+    expect(within(screen.getByLabelText("Сотрудник")).getAllByRole("option")).toHaveLength(4);
+    expect(within(screen.getByLabelText("Кому выдать")).getAllByRole("option")).toHaveLength(7);
+  });
+
+  it("при активных фильтрах удаляет один источник, сохраняя остальные данные и выбор", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(
+      screen.getByLabelText("Группа сотрудников для проверки"),
+      "accounting",
+    );
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Группа сотрудников для выдачи"), "support");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:boris");
+    await events.click(screen.getByTestId("permission-remove-p1"));
+    expect(screen.getByTestId("access-result")).toHaveTextContent("Доступ есть");
+    expect(screen.getByTestId("access-sources")).toHaveTextContent("Группа «Бухгалтерия»");
+    expect(screen.getByTestId("access-sources")).not.toHaveTextContent("Прямое разрешение");
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("accounting");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("support");
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("anna");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("user:boris");
+    const expected = exportConfig({ ...seedConfig, permissions: seedConfig.permissions.slice(1) });
+    expect(decodeURIComponent(screen.getByTestId("export-link").getAttribute("href") ?? "")).toBe(
+      `data:application/json;charset=utf-8,${expected}`,
+    );
+  });
+
+  it("выдаёт разрешение группе вне фильтра сотрудников", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(
+      screen.getByLabelText("Группа сотрудников для выдачи"),
+      "accounting",
+    );
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "group:support");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await events.click(screen.getByTestId("permission-add"));
+    expect(screen.getByText("Группа «Поддержка»: Учёт")).toBeInTheDocument();
+    await pickAccess("Борис Каримов", "Учёт");
+    expect(screen.getByTestId("access-sources")).toHaveTextContent("Группа «Поддержка»");
+  });
+
+  it("выдаёт разрешение выбранному участнику, сохраняет выбор и не создаёт дубль", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    const filter = screen.getByLabelText("Группа сотрудников для выдачи");
+    await events.selectOptions(filter, "accounting");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "mail");
+    await events.click(screen.getByTestId("permission-add"));
+    expect(screen.getByText("Анна Белова: Почта")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^permission-item-/)).toHaveLength(6);
+    expect(filter).toHaveValue("accounting");
+    await events.selectOptions(filter, "");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("user:anna");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("mail");
+    await events.click(screen.getByTestId("permission-add"));
+    expect(screen.getByTestId("permission-message")).toHaveTextContent("уже выдано");
+    expect(screen.getAllByTestId(/^permission-item-/)).toHaveLength(6);
+  });
+
+  it("запрещает выдачу скрытому сотруднику и не восстанавливает его при сбросе фильтра", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "mail");
+    const filter = screen.getByLabelText("Группа сотрудников для выдачи");
+    await events.selectOptions(filter, "support");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("mail");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+    await events.click(screen.getByTestId("permission-add"));
+    expect(screen.getAllByTestId(/^permission-item-/)).toHaveLength(5);
+    await events.selectOptions(filter, "");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+  });
+
+  it("объясняет пустую группу и позволяет выдать разрешение группе", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      exportConfig({
+        ...seedConfig,
+        groups: [...seedConfig.groups, { id: "archive", name: "Архив" }],
+      }),
+    );
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(screen.getByLabelText("Группа сотрудников для выдачи"), "archive");
+    expect(screen.getByText("В этой группе нет сотрудников")).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Кому выдать"))
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Не выбрано",
+      "Группа «Бухгалтерия»",
+      "Группа «Разработка»",
+      "Группа «Поддержка»",
+      "Группа «Архив»",
+    ]);
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "group:archive");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "mail");
+    await events.click(screen.getByTestId("permission-add"));
+    expect(screen.getByText("Группа «Архив»: Почта")).toBeInTheDocument();
+  });
+
+  it("фильтрует сотрудников для выдачи независимо от проверки и сохраняет всех групповых получателей", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    const accessFilter = screen.getByLabelText("Группа сотрудников для проверки");
+    const grantFilter = screen.getByLabelText("Группа сотрудников для выдачи");
+    const recipients = screen.getByLabelText("Кому выдать");
+    expect(grantFilter).toHaveValue("");
+    await events.selectOptions(accessFilter, "accounting");
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(grantFilter, "support");
+    expect(
+      within(recipients)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Не выбрано",
+      "Борис Каримов",
+      "Группа «Бухгалтерия»",
+      "Группа «Разработка»",
+      "Группа «Поддержка»",
+    ]);
+    expect(accessFilter).toHaveValue("accounting");
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("anna");
+    await events.selectOptions(recipients, "group:accounting");
+    await events.selectOptions(accessFilter, "development");
+    expect(grantFilter).toHaveValue("support");
+    expect(recipients).toHaveValue("group:accounting");
+    await events.selectOptions(grantFilter, "development");
+    expect(recipients).toHaveValue("group:accounting");
+    expect(screen.getAllByTestId(/^permission-item-/)).toHaveLength(5);
+  });
+
   it("показывает все разрешения конфигурации", () => {
     renderApp();
 
@@ -79,6 +235,172 @@ describe("редактирование разрешений", () => {
 });
 
 describe("импорт конфигурации", () => {
+  it("при ошибке импорта сохраняет оба фильтра, выбранные значения и сохранённую конфигурацию", async () => {
+    const saved = exportConfig(seedConfig);
+    localStorage.setItem(STORAGE_KEY, saved);
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(
+      screen.getByLabelText("Группа сотрудников для проверки"),
+      "accounting",
+    );
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Группа сотрудников для выдачи"), "support");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:boris");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "mail");
+    const broken = {
+      ...seedConfig,
+      permissions: [{ id: "broken", subject: { type: "user", id: "missing" }, serviceId: "mail" }],
+    };
+    await upload(JSON.stringify({ version: 1, ...broken }));
+    await screen.findByTestId("import-error");
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("accounting");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("support");
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("anna");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("user:boris");
+    expect(screen.getByLabelText("Сервис")).toHaveValue("ledger");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("mail");
+    expect(screen.getByTestId("access-result")).toHaveTextContent("Доступ есть");
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(saved);
+    expect(decodeURIComponent(screen.getByTestId("export-link").getAttribute("href") ?? "")).toBe(
+      `data:application/json;charset=utf-8,${saved}`,
+    );
+  });
+
+  it("очищает выбор при пустом импорте и не восстанавливает удалённого сотрудника", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    for (const label of ["Группа сотрудников для проверки", "Группа сотрудников для выдачи"]) {
+      await events.selectOptions(screen.getByLabelText(label), "accounting");
+    }
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await upload(exportConfig({ users: [], groups: [], services: [], permissions: [] }));
+    await screen.findByTestId("import-status");
+    for (const label of [
+      "Группа сотрудников для проверки",
+      "Группа сотрудников для выдачи",
+      "Сотрудник",
+      "Кому выдать",
+      "Сервис",
+      "К какому сервису",
+    ]) {
+      const field = screen.getByLabelText(label);
+      expect(field).toHaveValue("");
+      expect(within(field).getAllByRole("option")).toHaveLength(1);
+    }
+    expect(screen.getByTestId("access-result")).toHaveTextContent("Выберите сотрудника и сервис");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+    await upload(exportConfig(seedConfig));
+    await within(screen.getByLabelText("Сотрудник")).findByRole("option", { name: "Анна Белова" });
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+  });
+
+  it("сбрасывает удалённый сервис в обеих формах и требует выбрать его заново", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await upload(exportConfig({ ...seedConfig, services: [], permissions: [] }));
+    await screen.findByTestId("import-status");
+    expect(screen.getByTestId("access-result")).toHaveTextContent("Выберите сотрудника и сервис");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("anna");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("user:anna");
+    await upload(exportConfig(seedConfig));
+    await within(screen.getByLabelText("Сервис")).findByRole("option", { name: "Учёт" });
+    expect(screen.getByLabelText("Сервис")).toHaveValue("");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+  });
+
+  it("сбрасывает удалённую группу-получателя и не восстанавливает её после следующего импорта", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "group:accounting");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await upload(exportConfig({ ...seedConfig, users: [], groups: [], permissions: [] }));
+    await screen.findByTestId("import-status");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+    await upload(exportConfig(seedConfig));
+    await within(screen.getByLabelText("Кому выдать")).findByRole("option", {
+      name: "Группа «Бухгалтерия»",
+    });
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+  });
+
+  it("возвращает все группы при удалении фильтра и сохраняет допустимый выбор", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    for (const label of ["Группа сотрудников для проверки", "Группа сотрудников для выдачи"]) {
+      await events.selectOptions(screen.getByLabelText(label), "accounting");
+    }
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await upload(
+      exportConfig({
+        ...seedConfig,
+        groups: seedConfig.groups.slice(1),
+        users: [{ ...seedConfig.users[0], groupIds: [] }, ...seedConfig.users.slice(1)],
+        permissions: [seedConfig.permissions[0]],
+      }),
+    );
+    await screen.findByTestId("import-status");
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("");
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("anna");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("user:anna");
+    expect(screen.getByLabelText("Сервис")).toHaveValue("ledger");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("ledger");
+    await upload(exportConfig(seedConfig));
+    await within(screen.getByLabelText("Группа сотрудников для проверки")).findByRole("option", {
+      name: "Бухгалтерия",
+    });
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("");
+  });
+
+  it("сбрасывает скрытого после импорта сотрудника в обеих формах и не восстанавливает выбор", async () => {
+    renderApp();
+    const events = userEvent.setup();
+    for (const label of ["Группа сотрудников для проверки", "Группа сотрудников для выдачи"]) {
+      await events.selectOptions(screen.getByLabelText(label), "accounting");
+    }
+    await pickAccess("Анна Белова", "Учёт");
+    await events.selectOptions(screen.getByLabelText("Кому выдать"), "user:anna");
+    await events.selectOptions(screen.getByLabelText("К какому сервису"), "ledger");
+    await upload(
+      exportConfig({
+        ...seedConfig,
+        users: [{ ...seedConfig.users[0], groupIds: ["support"] }, ...seedConfig.users.slice(1)],
+      }),
+    );
+    await screen.findByTestId("import-status");
+
+    expect(screen.getByTestId("access-result")).toHaveTextContent("Выберите сотрудника и сервис");
+    expect(screen.queryByTestId("access-sources")).not.toBeInTheDocument();
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+    expect(screen.getByLabelText("Сервис")).toHaveValue("ledger");
+    expect(screen.getByLabelText("К какому сервису")).toHaveValue("ledger");
+    expect(screen.getByLabelText("Группа сотрудников для проверки")).toHaveValue("accounting");
+    expect(screen.getByLabelText("Группа сотрудников для выдачи")).toHaveValue("accounting");
+    await upload(exportConfig(seedConfig));
+    expect(
+      await within(screen.getByLabelText("Сотрудник")).findByRole("option", {
+        name: "Анна Белова",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Сотрудник")).toHaveValue("");
+    expect(screen.getByLabelText("Кому выдать")).toHaveValue("");
+    expect(screen.getByTestId("permission-add")).toBeDisabled();
+  });
+
   const imported = {
     ...seedConfig,
     permissions: [seedConfig.permissions[4]],
@@ -120,6 +442,22 @@ describe("импорт конфигурации", () => {
 });
 
 describe("экспорт конфигурации", () => {
+  it("фильтрация сохраняет полный экспорт, хранилище и список разрешений", async () => {
+    const saved = exportConfig(seedConfig);
+    localStorage.setItem(STORAGE_KEY, saved);
+    renderApp();
+    const events = userEvent.setup();
+    const href = screen.getByTestId("export-link").getAttribute("href");
+    for (const group of ["support", "accounting", ""]) {
+      for (const label of ["Группа сотрудников для проверки", "Группа сотрудников для выдачи"]) {
+        await events.selectOptions(screen.getByLabelText(label), group);
+      }
+      expect(screen.getByTestId("export-link")).toHaveAttribute("href", href);
+      expect(localStorage.getItem(STORAGE_KEY)).toBe(saved);
+      expect(screen.getAllByTestId(/^permission-item-/)).toHaveLength(5);
+    }
+  });
+
   it("отдаёт текущую конфигурацию для скачивания в формате файла импорта", async () => {
     renderApp();
     await userEvent.setup().click(screen.getByTestId("permission-remove-p5"));

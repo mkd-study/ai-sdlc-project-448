@@ -8,6 +8,7 @@ import { loadConfig, saveConfig } from "./storage";
 
 export type { AccessResult, AccessSource } from "../domain/access";
 export type { Config, Group, Permission, Service, Subject, User } from "../domain/model";
+export { selectEmployees } from "./employee-selection";
 
 export type GrantResult = "granted" | "exists";
 export type ImportResult = { ok: true } | { ok: false; errors: string[] };
