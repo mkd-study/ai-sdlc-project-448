@@ -44,7 +44,7 @@ export const PermissionsPanel = ({ config, onGrant, onRevoke }: Props) => {
       ? selection.userId
         ? storedSubject
         : null
-      : config.groups.some((group) => group.id === storedSubject?.id)
+      : selection.groupId && storedSubject?.id === selection.groupId
         ? storedSubject
         : null;
   const selectedServiceId = config.services.some((service) => service.id === serviceId)
@@ -109,7 +109,7 @@ export const PermissionsPanel = ({ config, onGrant, onRevoke }: Props) => {
             }
           }}
           data={[
-            { value: "", label: "Все группы" },
+            { value: "", label: "Не выбрана" },
             ...config.groups.map((group) => ({ value: group.id, label: group.name })),
           ]}
         />
@@ -126,11 +126,10 @@ export const PermissionsPanel = ({ config, onGrant, onRevoke }: Props) => {
             onChange={(event) => setSubjectValue(event.currentTarget.value)}
             data={[
               { value: "", label: "Не выбрано" },
+              ...(selection.groupId
+                ? [{ value: `group:${selection.groupId}`, label: "Все сотрудники группы" }]
+                : []),
               ...selection.users.map((user) => ({ value: `user:${user.id}`, label: user.name })),
-              ...config.groups.map((group) => ({
-                value: `group:${group.id}`,
-                label: `Группа «${group.name}»`,
-              })),
             ]}
           />
           <NativeSelect
