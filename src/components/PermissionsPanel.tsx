@@ -1,5 +1,6 @@
 import { Button, Group, NativeSelect, Paper, Stack, Text, Title } from "@mantine/core";
 import { useState } from "react";
+import { selectEmployees } from "../app";
 import type { Config, GrantResult, Permission, Subject } from "../app";
 
 type Props = {
@@ -28,17 +29,45 @@ const toSubject = (value: string): Subject | null => {
 
 export const PermissionsPanel = ({ config, onGrant, onRevoke }: Props) => {
   const [subjectValue, setSubjectValue] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [message, setMessage] = useState("");
 
-  const subject = toSubject(subjectValue);
+  const storedSubject = toSubject(subjectValue);
+  const selection = selectEmployees(
+    config,
+    groupId,
+    storedSubject?.type === "user" ? storedSubject.id : "",
+  );
+  const subject =
+    storedSubject?.type === "user"
+      ? selection.userId
+        ? storedSubject
+        : null
+      : selection.groupId && storedSubject?.id === selection.groupId
+        ? storedSubject
+        : null;
+  const selectedServiceId = config.services.some((service) => service.id === serviceId)
+    ? serviceId
+    : "";
+  if (groupId !== selection.groupId) {
+    setGroupId(selection.groupId);
+  }
+  if (storedSubject && !subject) {
+    setSubjectValue("");
+  }
+  if (serviceId !== selectedServiceId) {
+    setServiceId(selectedServiceId);
+  }
 
   const grant = () => {
-    if (!subject || !serviceId) {
+    if (!subject || !selectedServiceId) {
       return;
     }
     setMessage(
-      onGrant(subject, serviceId) === "exists" ? "Это разрешение уже выдано" : "Разрешение выдано",
+      onGrant(subject, selectedServiceId) === "exists"
+        ? "Это разрешение уже выдано"
+        : "Разрешение выдано",
     );
   };
 
@@ -65,32 +94,59 @@ export const PermissionsPanel = ({ config, onGrant, onRevoke }: Props) => {
             </Button>
           </Group>
         ))}
+        <NativeSelect
+          label="Группа сотрудников для выдачи"
+          value={selection.groupId}
+          onChange={(event) => {
+            const next = selectEmployees(
+              config,
+              event.currentTarget.value,
+              subject?.type === "user" ? subject.id : "",
+            );
+            setGroupId(next.groupId);
+            if (subject?.type === "user" && !next.userId) {
+              setSubjectValue("");
+            }
+          }}
+          data={[
+            { value: "", label: "Не выбрана" },
+            ...config.groups.map((group) => ({ value: group.id, label: group.name })),
+          ]}
+        />
         <Group align="flex-end">
           <NativeSelect
             label="Кому выдать"
+            description={
+              selection.groupId && selection.users.length === 0
+                ? "В этой группе нет сотрудников"
+                : undefined
+            }
             data-testid="permission-subject-select"
-            value={subjectValue}
+            value={subject ? subjectValue : ""}
             onChange={(event) => setSubjectValue(event.currentTarget.value)}
             data={[
               { value: "", label: "Не выбрано" },
-              ...config.users.map((user) => ({ value: `user:${user.id}`, label: user.name })),
-              ...config.groups.map((group) => ({
-                value: `group:${group.id}`,
-                label: `Группа «${group.name}»`,
-              })),
+              ...(selection.groupId
+                ? [{ value: `group:${selection.groupId}`, label: "Все сотрудники группы" }]
+                : []),
+              ...selection.users.map((user) => ({ value: `user:${user.id}`, label: user.name })),
             ]}
           />
           <NativeSelect
             label="К какому сервису"
             data-testid="permission-service-select"
-            value={serviceId}
+            value={selectedServiceId}
             onChange={(event) => setServiceId(event.currentTarget.value)}
             data={[
               { value: "", label: "Не выбран" },
               ...config.services.map((service) => ({ value: service.id, label: service.name })),
             ]}
           />
-          <Button data-testid="permission-add" disabled={!subject || !serviceId} onClick={grant}>
+          <Button
+            data-testid="permission-add"
+            disabled={!subject || !selectedServiceId}
+            onClick={grant}
+          >
             Выдать
           </Button>
         </Group>
