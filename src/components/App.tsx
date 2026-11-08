@@ -43,6 +43,7 @@ export const App = () => {
         <Title order={1}>Симулятор политик доступа</Title>
         <NativeSelect
           label="Группа сотрудников для проверки"
+          data-testid="group-filter"
           value={selection.groupId}
           onChange={(event) => {
             const next = selectEmployees(config, event.currentTarget.value, userId);

@@ -140,7 +140,7 @@ describe("экран расчёта доступа", () => {
   it("позволяет выбрать сотрудника группы и вернуть полный список", async () => {
     renderApp();
     const events = userEvent.setup();
-    const filter = screen.getByRole("combobox", { name: "Группа сотрудников для проверки" });
+    const filter = screen.getByTestId("group-filter");
     const employees = screen.getByRole("combobox", { name: "Сотрудник" });
     expect(filter).toHaveValue("");
     expect(
